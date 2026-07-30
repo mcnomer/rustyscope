@@ -128,11 +128,11 @@ impl NanoscopeFile {
         let height = self.get_height_channel()?;
         let x = self.get_x_channel()?;
 
-        let height_nm_per_v = self.get_axis_nm_per_v(&height.metadata, H_SENS_KEY)?;
+        let height_nm_per_v = self.get_axis_nm_per_v(&self.scanner_metadata, H_SENS_KEY)?;
         let height_v_per_lsb = self.get_v_per_lsb(&height.metadata, H_SCALE_KEY)?;
         let height_lsb_scale = self.get_lsb_scale(&height.metadata)?;
 
-        let x_nm_per_v = self.get_axis_nm_per_v(&x.metadata, X_SENS_KEY)?;
+        let x_nm_per_v = self.get_axis_nm_per_v(&self.scanner_metadata, X_SENS_KEY)?;
         let x_v_per_lsb = self.get_v_per_lsb(&x.metadata, X_SCALE_KEY)?;
         let x_lsb_scale = self.get_lsb_scale(&x.metadata)?;
 
@@ -167,7 +167,7 @@ impl NanoscopeFile {
 
     fn get_x_channel(&self) -> Result<&Channel, String> {
         self.channels
-            .get(0)
+            .get(1)
             .ok_or_else(|| format!("Rustyscope Error: couldn't get channel 1 (Y scan)."))
     }
 

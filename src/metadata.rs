@@ -48,7 +48,7 @@ impl Metadata {
     pub fn get(&self, key: &str) -> Result<&MetadataValue, String> {
         self.data
             .get(key)
-            .ok_or_else(|| format!("Rustyscope Error couldn't find '{}' entry", key))
+            .ok_or_else(|| format!("Rustyscope Error: couldn't find '{}' entry", key))
     }
 
     pub fn insert_line(&mut self, line: &str) -> std::io::Result<()> {
