@@ -24,7 +24,6 @@ dynamic = ["version"]
 [project.urls]
 Repository = "https://github.com/mcnomer/rustyscope.git"
 Issues = "https://github.com/mcnomer/rustyscope/issues"
-Changelog = "https://github.com/mcnomer/rustyscope/blob/master/CHANGELOG.md"
 
 [tool.maturin]
 python-source = "."
