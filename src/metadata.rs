@@ -1,7 +1,8 @@
-use std::collections::HashMap;
-use std::io::{Error, ErrorKind};
-
 use regex::Regex;
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::io::{Error, ErrorKind};
+use std::str::FromStr;
 
 #[derive(Debug)]
 pub enum MetadataValue {
@@ -60,55 +61,92 @@ impl Metadata {
         Ok(())
     }
 
-    pub fn get_int(&self, key: &str, regex_option: Option<&Regex>) -> Result<i64, String> {
+    pub fn get_int<T>(&self, key: &str, regex_option: Option<&Regex>) -> Result<T, String>
+    where
+        T: TryFrom<i64>,
+        <T as TryFrom<i64>>::Error: Display,
+        T: FromStr,
+        <T as FromStr>::Err: Display,
+    {
         let value = self
             .data
             .get(key)
-            .ok_or(format!("Rustyscope Error couldn't find '{}' entry", key))?;
+            .ok_or_else(|| format!("Rustyscope Error couldn't find '{}' entry", key))?;
         match value {
-            MetadataValue::Integer(x) => Ok(*x),
+            MetadataValue::Integer(x) => {
+                T::try_from(*x).map_err(|e| format!("Rustscope error parsing '{key}': {e}"))
+            }
             MetadataValue::Float(x) => Err(format!(
                 "Rustyscope error parsing '{}': '{}' should be an integer not a float.",
                 key,
                 x.to_string()
             )),
             MetadataValue::String(s) => {
-                let err_str = format!(
-                    "Rustyscope error parsing '{}': '{}' was in an unexpected format.",
-                    key, s
-                );
-                if let Some(re) = regex_option {
-                    let caps = re.captures(s).ok_or(&err_str)?;
-                    let x_str = caps.get(1).ok_or(&err_str)?.as_str();
-                    x_str.parse::<i64>().map_err(|err| err.to_string())
-                } else {
-                    s.parse::<i64>().map_err(|err| err.to_string())
-                }
+                let str_to_parse = match regex_option {
+                    Some(re) => re
+                        .captures(s)
+                        .and_then(|caps| caps.get(1))
+                        .map(|x| x.as_str())
+                        .ok_or_else(|| format!("Rustyscope error parsing '{key}': '{s}' was in an unexpected format."))?,
+                    None => s.as_str()
+                };
+                str_to_parse.parse::<T>().map_err(|err| err.to_string())
             }
         }
     }
 
-    pub fn get_float(&self, key: &str, regex_option: Option<&Regex>) -> Result<f64, String> {
+    pub fn get_float<T>(&self, key: &str, regex_option: Option<&Regex>) -> Result<T, String>
+    where
+        T: TryFrom<f64>,
+        <T as TryFrom<f64>>::Error: Display,
+        T: FromStr,
+        <T as FromStr>::Err: Display,
+    {
         let value = self
             .data
             .get(key)
-            .ok_or(format!("Rustyscope Error couldn't find '{}' entry", key))?;
+            .ok_or_else(|| format!("Rustyscope Error couldn't find '{}' entry", key))?;
         match value {
-            MetadataValue::Integer(x) => Ok(*x as f64),
-            MetadataValue::Float(x) => Ok(*x),
-            MetadataValue::String(s) => {
-                let err_str = format!(
-                    "Rustyscope error parsing '{}': '{}' was in an unexpected format.",
-                    key, s
-                );
-                if let Some(re) = regex_option {
-                    let caps = re.captures(s).ok_or(&err_str)?;
-                    let x_str = caps.get(1).ok_or(&err_str)?.as_str();
-                    x_str.parse::<f64>().map_err(|err| err.to_string())
-                } else {
-                    s.parse::<f64>().map_err(|err| err.to_string())
-                }
+            MetadataValue::Integer(x) => {
+                T::try_from(*x as f64).map_err(|e| format!("Rustscope error parsing '{key}': {e}"))
             }
+            MetadataValue::Float(x) => {
+                T::try_from(*x).map_err(|e| format!("Rustscope error parsing '{key}': {e}"))
+            }
+            MetadataValue::String(s) => {
+                let str_to_parse = match regex_option {
+                    Some(re) => re
+                        .captures(s)
+                        .and_then(|caps| caps.get(1))
+                        .map(|x| x.as_str())
+                        .ok_or_else(|| format!("Rustyscope error parsing '{key}': '{s}' was in an unexpected format."))?,
+                    None => s.as_str()
+                };
+                str_to_parse.parse::<T>().map_err(|err| err.to_string())
+            }
+        }
+    }
+
+    pub fn get_string(&self, key: &str, regex_option: Option<&Regex>) -> Result<String, String> {
+        let value = self
+            .data
+            .get(key)
+            .ok_or_else(|| format!("Rustyscope Error couldn't find '{}' entry", key))?;
+        match value {
+            MetadataValue::Integer(x) => Ok(x.to_string()),
+            MetadataValue::Float(x) => Ok(x.to_string()),
+            MetadataValue::String(s) => Ok(match regex_option {
+                Some(re) => re
+                    .captures(s)
+                    .and_then(|caps| caps.get(1))
+                    .map(|x| x.as_str().to_owned())
+                    .ok_or_else(|| {
+                        format!(
+                            "Rustyscope error parsing '{key}': '{s}' was in an unexpected format."
+                        )
+                    })?,
+                None => s.to_owned(),
+            }),
         }
     }
 }

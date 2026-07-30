@@ -2,6 +2,7 @@ use crate::metadata::Metadata;
 use crate::scandata::Channel;
 use regex::regex;
 use std::cmp::min;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read};
 
@@ -15,24 +16,48 @@ const H_SENS_KEY: &str = "@sens. zsensor";
 const X_SCALE_KEY: &str = "@2:z scale y scan";
 const X_SENS_KEY: &str = "@sens. ypiezo";
 
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 enum HeaderSection {
     FileMetadata,
     ScannerMetadata,
     Channels(usize),
+    Other(String),
+}
+
+impl HeaderSection {
+    pub fn to_string(&self) -> String {
+        match self {
+            HeaderSection::FileMetadata => "File Metadata".to_string(),
+            HeaderSection::ScannerMetadata => "Scanner Metadata".to_string(),
+            HeaderSection::Channels(i) => format!("Channel {}", i),
+            HeaderSection::Other(s) => s.to_string(),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct Header {
+    sections: HashMap<HeaderSection, Metadata>,
+}
+
+#[derive(Debug)]
+pub struct NanoscopeFile {
+    // buffer: Vec<u8>,
     pub file_metadata: Metadata,
     pub scanner_metadata: Metadata,
     pub channels: Vec<Channel>,
 }
 
-#[derive(Debug)]
-pub struct NanoscopeFile {
-    buffer: Vec<u8>,
-    pub header: Header,
+impl Header {
+    fn get_section_and_consume(&mut self, section: HeaderSection) -> std::io::Result<Metadata> {
+        self.sections.remove(&section).ok_or(Error::new(
+            ErrorKind::Other,
+            format!(
+                "Rustyscope Error: Missing section '{}'",
+                section.to_string()
+            ),
+        ))
+    }
 }
 
 impl NanoscopeFile {
@@ -41,86 +66,52 @@ impl NanoscopeFile {
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;
 
-        let header = parse_header(&buffer)?;
+        let mut header = parse_header(&buffer)?;
 
-        // let data: Vec<i16> = buffer[40960..40960 + 39898]
+        let file_metadata = header.get_section_and_consume(HeaderSection::FileMetadata)?;
+        let scanner_metadata = header.get_section_and_consume(HeaderSection::ScannerMetadata)?;
+        let mut channels = vec![];
 
-        Ok(NanoscopeFile { buffer, header })
-    }
-
-    pub fn get_channel_data(&self, channel_idx: usize) -> Result<Vec<i16>, String> {
-        let channel: &Channel = self.header.channels.get(channel_idx).ok_or(format!(
-            "Rustyscope Error: couldn't get channel {}.",
-            channel_idx
-        ))?;
-        let offset = channel.get_byte_offset()?;
-        let length = channel.get_byte_length()?;
-        if length % 2 != 0 {
-            return Err(format!(
-                "Rustyscope Error: data length ({}) was not a multiple of 2.",
-                length
-            ));
+        for (key, val) in header.sections.drain() {
+            if let HeaderSection::Channels(i) = key {
+                channels.push(Channel::from_metadata(val, &buffer).map_err(|err| {
+                    Error::new(
+                        ErrorKind::Other,
+                        format!("Rustyscope parsing channel {i}: {err}"),
+                    )
+                })?);
+            }
         }
-        Ok(self.buffer[offset..offset + length]
-            .chunks_exact(2)
-            .map(|x| i16::from_le_bytes([x[0], x[1]]))
-            .collect())
+
+        Ok(NanoscopeFile {
+            file_metadata,
+            scanner_metadata,
+            channels,
+        })
     }
 
     pub fn get_scan_lines(&self) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
-        let height_data = self
-            .get_channel_data(0)
-            .map_err(|err| err + "\n - Couldn't read Z height channel data.")?;
-        let x_data = self
-            .get_channel_data(1)
-            .map_err(|err| err + "\n - Couldn't read Y scan channel data.")?;
+        let height = self.get_height_channel()?;
+        let x = self.get_x_channel()?;
 
-        let height_channel = self
-            .header
-            .channels
-            .get(0)
-            .ok_or("Rustyscope Error: couldn't get channel 0 (Z height).")?;
-        let x_channel = self
-            .header
-            .channels
-            .get(1)
-            .ok_or("Rustyscope Error: couldn't get channel 1 (Y scan).")?;
+        let height_nm_per_v = self.get_axis_nm_per_v(&height.metadata, H_SENS_KEY)?;
+        let height_v_per_lsb = self.get_v_per_lsb(&height.metadata, H_SCALE_KEY)?;
+        let height_lsb_scale = self.get_lsb_scale(&height.metadata)?;
 
-        let height_nm_per_v = self.get_axis_nm_per_v(H_SENS_KEY)?;
-        let height_v_per_lsb = height_channel.get_v_per_lsb(H_SCALE_KEY)?;
-        let height_lsb_scale = height_channel.get_lsb_scale()?;
-
-        let x_nm_per_v = self.get_axis_nm_per_v(X_SENS_KEY)?;
-        let x_v_per_lsb = x_channel.get_v_per_lsb(X_SCALE_KEY)?;
-        let x_lsb_scale = x_channel.get_lsb_scale()?;
+        let x_nm_per_v = self.get_axis_nm_per_v(&x.metadata, X_SENS_KEY)?;
+        let x_v_per_lsb = self.get_v_per_lsb(&x.metadata, X_SCALE_KEY)?;
+        let x_lsb_scale = self.get_lsb_scale(&x.metadata)?;
 
         let mut lines: Vec<(Vec<f64>, Vec<f64>)> = vec![];
         let height_scale = height_nm_per_v * height_v_per_lsb / height_lsb_scale;
         let x_scale = x_nm_per_v * x_v_per_lsb / x_lsb_scale;
 
-        let min_length = min(height_data.len(), x_data.len());
+        let min_length = min(height.data.len(), x.data.len());
         let mut off: usize = 0;
         while off < min_length {
-            let line_length = *x_data.get(off).ok_or(format!(
-                "Rustyscope Error: failed to read byte {} in line of length {} while parsing scan data. The file may be corrupted.",
-                off,
-                x_data.len()
-            ))?;
-            let line_height =
-                height_data
-                    .get(off + 1..off + line_length as usize)
-                    .ok_or(format!(
-                        "Rustyscope Error: failed to read bytes {}-{} in line of length {} while parsing scan's Z height data. The file may be corrupted.",
-                        off+1, off+line_length as usize,
-                        height_data.len()
-                    ))?;
-            let line_x = x_data
-                .get(off + 1..off + line_length as usize)
-                .ok_or(format!(
-                        "Rustyscope Error: failed to read bytes {}-{} in line of length {} while parsing scan Y data. The file may be corrupted.",
-                        off+1, off+line_length as usize,
-                        x_data.len()
-                    ))?;
+            let line_length = x.get_num_in_data(off)?;
+            let line_height = height.get_range_in_data(off + 1..off + line_length as usize)?;
+            let line_x = x.get_range_in_data(off + 1..off + line_length as usize)?;
 
             let scaled_line_height: Vec<f64> = line_height
                 .iter()
@@ -134,19 +125,32 @@ impl NanoscopeFile {
         Ok(lines)
     }
 
-    fn get_axis_nm_per_v(&self, key: &str) -> Result<f64, String> {
-        self.header
-            .scanner_metadata
-            .get_float(key, Some(regex!(r"([-+]?(?:\d*\.?\d+)) nm\/V")))
+    fn get_height_channel(&self) -> Result<&Channel, String> {
+        self.channels
+            .get(0)
+            .ok_or_else(|| format!("Rustyscope Error: couldn't get channel 0 (Z height)."))
+    }
+
+    fn get_x_channel(&self) -> Result<&Channel, String> {
+        self.channels
+            .get(0)
+            .ok_or_else(|| format!("Rustyscope Error: couldn't get channel 1 (Y scan)."))
+    }
+
+    fn get_v_per_lsb(&self, metadata: &Metadata, key: &str) -> Result<f64, String> {
+        metadata.get_float(key, Some(regex!(r"\(([-+]?(?:\d*\.?\d+)) V\/LSB")))
+    }
+    fn get_lsb_scale(&self, metadata: &Metadata) -> Result<f64, String> {
+        metadata.get_float("z lsb scale", None)
+    }
+
+    fn get_axis_nm_per_v(&self, metadata: &Metadata, key: &str) -> Result<f64, String> {
+        metadata.get_float(key, Some(regex!(r"([-+]?(?:\d*\.?\d+)) nm\/V")))
     }
 }
 
 fn parse_header(buffer: &[u8]) -> std::io::Result<Header> {
-    let mut header = Header {
-        file_metadata: Metadata::new(),
-        scanner_metadata: Metadata::new(),
-        channels: vec![],
-    };
+    let mut sections: HashMap<HeaderSection, Metadata> = HashMap::new();
 
     let mut current_section: Option<HeaderSection> = None;
     let mut channel_idx = 0;
@@ -159,36 +163,27 @@ fn parse_header(buffer: &[u8]) -> std::io::Result<Header> {
 
     for line in lines {
         if line.starts_with(HEADER_SECTION_PREFIX) {
+            let section_name = line[1..].to_ascii_lowercase();
+
             if let Some(HeaderSection::Channels(_)) = current_section {
                 channel_idx += 1;
             }
-            current_section = match line[1..].to_ascii_lowercase().as_str() {
+
+            current_section = match section_name.as_str() {
                 "file list" => Some(HeaderSection::FileMetadata),
                 "scanner list" => Some(HeaderSection::ScannerMetadata),
                 "ciao image list" => Some(HeaderSection::Channels(channel_idx)),
-                _ => None,
+                _ => Some(HeaderSection::Other(section_name.clone())),
             };
-            if let Some(HeaderSection::Channels(_)) = current_section {
-                header.channels.push(Channel {
-                    metadata: Metadata::new(),
-                });
-            }
         } else {
-            let metadata = match current_section {
-                Some(HeaderSection::FileMetadata) => Some(&mut header.file_metadata),
-                Some(HeaderSection::ScannerMetadata) => Some(&mut header.scanner_metadata),
-                Some(HeaderSection::Channels(i)) => {
-                    header.channels.get_mut(i).map(|x| &mut x.metadata)
-                }
-                None => None,
-            };
-            if let Some(meta) = metadata {
-                meta.insert_line(line).unwrap();
+            if let Some(section) = current_section.clone() {
+                let metadata = sections.entry(section).or_insert(Metadata::new());
+                metadata.insert_line(line)?;
             }
         }
     }
 
-    Ok(header)
+    Ok(Header { sections })
 }
 
 fn split_lines(buffer: &[u8]) -> Vec<&[u8]> {
