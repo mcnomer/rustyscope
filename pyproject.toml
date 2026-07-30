@@ -1,0 +1,37 @@
+[build-system]
+requires = ["maturin>=1.14,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rustyscope"
+authors = [
+    {name = "Omer Karaman", email = "omermcnomer@gmail.com"}
+]
+maintainers = [
+    {name = "Omer Karaman", email = "omermcnomer@gmail.com"}
+]
+description = "A small library for parsing .001 files from Bruker 5th Gen AFPs"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/mcnomer/rustyscope.git"
+Issues = "https://github.com/mcnomer/rustyscope/issues"
+Changelog = "https://github.com/mcnomer/rustyscope/blob/master/CHANGELOG.md"
+
+[tool.maturin]
+python-source = "."
+module-name = "rustyscope.rustyscope"
+exclude = [
+    "tests/*",
+    "py_testing/*",
+    "*.001",
+    "*.csv",
+]

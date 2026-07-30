@@ -1,0 +1,20 @@
+[package]
+name = "rustyscope"
+version = "0.1.4"
+edition = "2024"
+description = "A small library for parsing .001 files from Bruker 5th Gen AFPs"
+readme = "README.md"
+repository = "https://github.com/mcnomer/rustyscope"
+license = "MIT"
+exclude = ["py_testing/", "*.001", "*.csv", ".*"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "rustyscope"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+csv = "1.4.0"
+numpy = "0.29.0"
+pyo3 = "0.29.0"
+regex = "1.13.1"
