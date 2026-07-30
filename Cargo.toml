@@ -16,5 +16,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 csv = "1.4.0"
 numpy = "0.29.0"
+ordered_hash_map = "0.6.0"
 pyo3 = "0.29.0"
 regex = "1.13.1"

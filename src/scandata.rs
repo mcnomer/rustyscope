@@ -5,7 +5,7 @@ use std::ops::Range;
 
 #[derive(Debug)]
 pub struct Channel {
-    name: String,
+    pub name: String,
     pub metadata: Metadata,
     pub data: Vec<i16>,
 }
@@ -21,7 +21,7 @@ impl Channel {
         })
     }
 
-    pub fn get_range_in_data(&self, idx_range: Range<usize>) -> Result<&[i16], String> {
+    pub fn get_data_range(&self, idx_range: Range<usize>) -> Result<&[i16], String> {
         let start = idx_range.start;
         let end = idx_range.end;
         self.data.get(idx_range)
@@ -31,7 +31,7 @@ impl Channel {
             ))
     }
 
-    pub fn get_num_in_data(&self, idx: usize) -> Result<i16, String> {
+    pub fn get_data_num(&self, idx: usize) -> Result<i16, String> {
         self.data.get(idx)
         .ok_or_else(|| 
             format!("Rustyscope Error: failed to read byte {} in line of length {} while parsing scan data. The file may be corrupted.",

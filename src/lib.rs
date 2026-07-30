@@ -1,15 +1,15 @@
+mod io;
 mod metadata;
-mod rustyscope_io;
 mod scandata;
 
 use pyo3::prelude::*;
 
-pub use rustyscope_io::NanoscopeFile;
+pub use io::NanoscopeFile;
 
 #[pymodule]
 mod rustyscope {
 
-    use crate::rustyscope_io::NanoscopeFile;
+    use crate::io::NanoscopeFile;
 
     use numpy::PyArray1;
     use pyo3::{

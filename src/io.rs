@@ -1,8 +1,9 @@
 use crate::metadata::Metadata;
 use crate::scandata::Channel;
+use ordered_hash_map::OrderedHashMap;
 use regex::regex;
 use std::cmp::min;
-use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read};
 
@@ -20,24 +21,34 @@ const X_SENS_KEY: &str = "@sens. ypiezo";
 enum HeaderSection {
     FileMetadata,
     ScannerMetadata,
+    EquipmentMetadata,
+    HSDCMetadata,
+    MiscMetadata,
+    EngageMetadata,
+    SweepMetadata,
     Channels(usize),
     Other(String),
 }
 
-impl HeaderSection {
-    pub fn to_string(&self) -> String {
+impl Display for HeaderSection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            HeaderSection::FileMetadata => "File Metadata".to_string(),
-            HeaderSection::ScannerMetadata => "Scanner Metadata".to_string(),
-            HeaderSection::Channels(i) => format!("Channel {}", i),
-            HeaderSection::Other(s) => s.to_string(),
+            HeaderSection::FileMetadata => write!(f, "File Metadata"),
+            HeaderSection::ScannerMetadata => write!(f, "Scanner Metadata"),
+            HeaderSection::EquipmentMetadata => write!(f, "Equipment Metadata"),
+            HeaderSection::HSDCMetadata => write!(f, "HSDC Metadata"),
+            HeaderSection::MiscMetadata => write!(f, "Misc Metadata"),
+            HeaderSection::EngageMetadata => write!(f, "Engage Metadata"),
+            HeaderSection::SweepMetadata => write!(f, "Sweep Metadata"),
+            HeaderSection::Channels(i) => write!(f, "Channel {i}"),
+            HeaderSection::Other(s) => write!(f, "{s}"),
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Header {
-    sections: HashMap<HeaderSection, Metadata>,
+struct Header {
+    sections: OrderedHashMap<HeaderSection, Metadata>,
 }
 
 #[derive(Debug)]
@@ -45,6 +56,11 @@ pub struct NanoscopeFile {
     // buffer: Vec<u8>,
     pub file_metadata: Metadata,
     pub scanner_metadata: Metadata,
+    pub equipment_metadata: Option<Metadata>,
+    pub hdsc_metadata: Option<Metadata>,
+    pub misc_metadata: Option<Metadata>,
+    pub engage_metadata: Option<Metadata>,
+    pub sweep_metadata: Option<Metadata>,
     pub channels: Vec<Channel>,
 }
 
@@ -70,22 +86,40 @@ impl NanoscopeFile {
 
         let file_metadata = header.get_section_and_consume(HeaderSection::FileMetadata)?;
         let scanner_metadata = header.get_section_and_consume(HeaderSection::ScannerMetadata)?;
+        let mut equipment_metadata = None;
+        let mut hdsc_metadata = None;
+        let mut misc_metadata = None;
+        let mut engage_metadata = None;
+        let mut sweep_metadata = None;
         let mut channels = vec![];
 
         for (key, val) in header.sections.drain() {
-            if let HeaderSection::Channels(i) = key {
-                channels.push(Channel::from_metadata(val, &buffer).map_err(|err| {
-                    Error::new(
-                        ErrorKind::Other,
-                        format!("Rustyscope parsing channel {i}: {err}"),
-                    )
-                })?);
+            match key {
+                HeaderSection::EquipmentMetadata => equipment_metadata = Some(val),
+                HeaderSection::HSDCMetadata => hdsc_metadata = Some(val),
+                HeaderSection::MiscMetadata => misc_metadata = Some(val),
+                HeaderSection::EngageMetadata => engage_metadata = Some(val),
+                HeaderSection::SweepMetadata => sweep_metadata = Some(val),
+                HeaderSection::Channels(i) => {
+                    channels.push(Channel::from_metadata(val, &buffer).map_err(|err| {
+                        Error::new(
+                            ErrorKind::Other,
+                            format!("Rustyscope parsing channel {i}: {err}"),
+                        )
+                    })?);
+                }
+                _ => (),
             }
         }
 
         Ok(NanoscopeFile {
             file_metadata,
             scanner_metadata,
+            equipment_metadata,
+            hdsc_metadata,
+            misc_metadata,
+            engage_metadata,
+            sweep_metadata,
             channels,
         })
     }
@@ -109,9 +143,9 @@ impl NanoscopeFile {
         let min_length = min(height.data.len(), x.data.len());
         let mut off: usize = 0;
         while off < min_length {
-            let line_length = x.get_num_in_data(off)?;
-            let line_height = height.get_range_in_data(off + 1..off + line_length as usize)?;
-            let line_x = x.get_range_in_data(off + 1..off + line_length as usize)?;
+            let line_length = x.get_data_num(off)?;
+            let line_height = height.get_data_range(off + 1..off + line_length as usize)?;
+            let line_x = x.get_data_range(off + 1..off + line_length as usize)?;
 
             let scaled_line_height: Vec<f64> = line_height
                 .iter()
@@ -150,7 +184,7 @@ impl NanoscopeFile {
 }
 
 fn parse_header(buffer: &[u8]) -> std::io::Result<Header> {
-    let mut sections: HashMap<HeaderSection, Metadata> = HashMap::new();
+    let mut sections: OrderedHashMap<HeaderSection, Metadata> = OrderedHashMap::new();
 
     let mut current_section: Option<HeaderSection> = None;
     let mut channel_idx = 0;
@@ -172,6 +206,12 @@ fn parse_header(buffer: &[u8]) -> std::io::Result<Header> {
             current_section = match section_name.as_str() {
                 "file list" => Some(HeaderSection::FileMetadata),
                 "scanner list" => Some(HeaderSection::ScannerMetadata),
+                "ciao scan list" => Some(HeaderSection::ScannerMetadata),
+                "equipment list" => Some(HeaderSection::EquipmentMetadata),
+                "hsdc list" => Some(HeaderSection::HSDCMetadata),
+                "misc. data list" => Some(HeaderSection::MiscMetadata),
+                "engage list" => Some(HeaderSection::EngageMetadata),
+                "sweep list" => Some(HeaderSection::SweepMetadata),
                 "ciao image list" => Some(HeaderSection::Channels(channel_idx)),
                 _ => Some(HeaderSection::Other(section_name.clone())),
             };
