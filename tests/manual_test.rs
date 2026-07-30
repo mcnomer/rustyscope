@@ -3,6 +3,7 @@ use rustyscope::NanoscopeFile;
 const TEST_FILE_PATH: &str = r"C:\Users\omerk\Documents\GitHub\mINE\rust\2026\nanoscope\QCJCD_W3_SiteSite1_Die_X0_Die_Y-4_23_A_22_20260708_010638.001";
 
 #[test]
+#[ignore = "manual only"]
 fn test_load() -> std::io::Result<()> {
     let ns_file = NanoscopeFile::load(TEST_FILE_PATH);
     if let Ok(ns) = ns_file {

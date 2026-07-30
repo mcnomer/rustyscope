@@ -13,7 +13,7 @@ mod rustyscope {
 
     use numpy::PyArray1;
     use pyo3::{
-        exceptions::{PyException, PyValueError},
+        exceptions::{PyException, PyOSError},
         prelude::*,
     };
 
@@ -22,7 +22,7 @@ mod rustyscope {
     #[pyfunction]
     fn load<'py>(py: Python<'py>, file_path: &str) -> PyResult<Vec<LinePair<'py>>> {
         let ns_file = NanoscopeFile::load(file_path)
-            .map_err(|e| PyValueError::new_err(format!("Failed to load file: {e}")))?;
+            .map_err(|e| PyOSError::new_err(format!("Failed to load file: {e}")))?;
 
         let lines = ns_file.get_scan_lines().map_err(PyException::new_err)?;
 
