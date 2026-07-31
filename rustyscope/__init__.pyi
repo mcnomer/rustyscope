@@ -1,13 +1,26 @@
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 import numpy as np
 import numpy.typing as npt
 
 LineScan = Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]
 
-def load(file_path: str) -> List[LineScan]:
-    """Loads a nanoscope AFP file as linescans
+class AFPFile:
+    def __init__(self, file_path: str) -> None:
+        """Loads a nanoscope AFP file as linescans
 
-    Returns:
-        List of (x_array, height_array) tuples with float64 numpy arrays.
-    """
-    ...
+        Returns:
+            List of (x_array, height_array) tuples with float64 numpy arrays.
+        """
+        ...
+
+    @property
+    def data(self) -> List[LineScan]: ...
+    @property
+    def file_metadata(self) -> Dict[str, int | float | str]: ...
+    @property
+    def scanner_metadata(self) -> Dict[str, int | float | str]: ...
+    def get_equipment_metadata(self) -> Dict[str, int | float | str]: ...
+    def get_hdsc_metadata(self) -> Dict[str, int | float | str]: ...
+    def get_misc_metadata(self) -> Dict[str, int | float | str]: ...
+    def get_engage_metadata(self) -> Dict[str, int | float | str]: ...
+    def get_sweep_metadata(self) -> Dict[str, int | float | str]: ...

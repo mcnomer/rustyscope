@@ -53,7 +53,7 @@ struct Header {
 
 #[derive(Debug)]
 pub struct NanoscopeFile {
-    // buffer: Vec<u8>,
+    pub file_path: String,
     pub file_metadata: Metadata,
     pub scanner_metadata: Metadata,
     pub equipment_metadata: Option<Metadata>,
@@ -62,6 +62,7 @@ pub struct NanoscopeFile {
     pub engage_metadata: Option<Metadata>,
     pub sweep_metadata: Option<Metadata>,
     pub channels: Vec<Channel>,
+    pub data: Vec<(Vec<f64>, Vec<f64>)>,
 }
 
 impl Header {
@@ -112,7 +113,15 @@ impl NanoscopeFile {
             }
         }
 
+        let data = get_scan_lines(&scanner_metadata, &channels).map_err(|err| {
+            Error::new(
+                ErrorKind::Other,
+                format!("Rustyscope parsing scan data: {err}"),
+            )
+        })?;
+
         Ok(NanoscopeFile {
+            file_path: file_path.to_string(),
             file_metadata,
             scanner_metadata,
             equipment_metadata,
@@ -121,65 +130,8 @@ impl NanoscopeFile {
             engage_metadata,
             sweep_metadata,
             channels,
+            data,
         })
-    }
-
-    pub fn get_scan_lines(&self) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
-        let height = self.get_height_channel()?;
-        let x = self.get_x_channel()?;
-
-        let height_nm_per_v = self.get_axis_nm_per_v(&self.scanner_metadata, H_SENS_KEY)?;
-        let height_v_per_lsb = self.get_v_per_lsb(&height.metadata, H_SCALE_KEY)?;
-        let height_lsb_scale = self.get_lsb_scale(&height.metadata)?;
-
-        let x_nm_per_v = self.get_axis_nm_per_v(&self.scanner_metadata, X_SENS_KEY)?;
-        let x_v_per_lsb = self.get_v_per_lsb(&x.metadata, X_SCALE_KEY)?;
-        let x_lsb_scale = self.get_lsb_scale(&x.metadata)?;
-
-        let mut lines: Vec<(Vec<f64>, Vec<f64>)> = vec![];
-        let height_scale = height_nm_per_v * height_v_per_lsb / height_lsb_scale;
-        let x_scale = x_nm_per_v * x_v_per_lsb / x_lsb_scale;
-
-        let min_length = min(height.data.len(), x.data.len());
-        let mut off: usize = 0;
-        while off < min_length {
-            let line_length = x.get_data_num(off)?;
-            let line_height = height.get_data_range(off + 1..off + line_length as usize)?;
-            let line_x = x.get_data_range(off + 1..off + line_length as usize)?;
-
-            let scaled_line_height: Vec<f64> = line_height
-                .iter()
-                .map(|&x| x as f64 * height_scale)
-                .collect();
-            let scaled_line_x: Vec<f64> = line_x.iter().map(|&x| x as f64 * x_scale).collect();
-
-            lines.push((scaled_line_x, scaled_line_height));
-            off += line_length as usize + 1;
-        }
-        Ok(lines)
-    }
-
-    fn get_height_channel(&self) -> Result<&Channel, String> {
-        self.channels
-            .get(0)
-            .ok_or_else(|| format!("Rustyscope Error: couldn't get channel 0 (Z height)."))
-    }
-
-    fn get_x_channel(&self) -> Result<&Channel, String> {
-        self.channels
-            .get(1)
-            .ok_or_else(|| format!("Rustyscope Error: couldn't get channel 1 (Y scan)."))
-    }
-
-    fn get_v_per_lsb(&self, metadata: &Metadata, key: &str) -> Result<f64, String> {
-        metadata.get_float(key, Some(regex!(r"\(([-+]?(?:\d*\.?\d+)) V\/LSB")))
-    }
-    fn get_lsb_scale(&self, metadata: &Metadata) -> Result<f64, String> {
-        metadata.get_float("z lsb scale", None)
-    }
-
-    fn get_axis_nm_per_v(&self, metadata: &Metadata, key: &str) -> Result<f64, String> {
-        metadata.get_float(key, Some(regex!(r"([-+]?(?:\d*\.?\d+)) nm\/V")))
     }
 }
 
@@ -255,4 +207,64 @@ fn filter_valid_header_lines(lines: Vec<&[u8]>) -> Vec<&str> {
         .filter_map(|&line| line.get(1..line.len()).and_then(|x| str::from_utf8(x).ok()))
         .take_while(|&line| line.to_ascii_lowercase() != HEADER_END_STR)
         .collect()
+}
+
+fn get_scan_lines(
+    scanner_metadata: &Metadata,
+    channels: &Vec<Channel>,
+) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
+    let height = get_height_channel(channels)?;
+    let x = get_x_channel(channels)?;
+
+    let height_nm_per_v = get_axis_nm_per_v(scanner_metadata, H_SENS_KEY)?;
+    let height_v_per_lsb = get_v_per_lsb(&height.metadata, H_SCALE_KEY)?;
+    let height_lsb_scale = get_lsb_scale(&height.metadata)?;
+
+    let x_nm_per_v = get_axis_nm_per_v(scanner_metadata, X_SENS_KEY)?;
+    let x_v_per_lsb = get_v_per_lsb(&x.metadata, X_SCALE_KEY)?;
+    let x_lsb_scale = get_lsb_scale(&x.metadata)?;
+
+    let mut lines: Vec<(Vec<f64>, Vec<f64>)> = vec![];
+    let height_scale = height_nm_per_v * height_v_per_lsb / height_lsb_scale;
+    let x_scale = x_nm_per_v * x_v_per_lsb / x_lsb_scale;
+
+    let min_length = min(height.data.len(), x.data.len());
+    let mut off: usize = 0;
+    while off < min_length {
+        let line_length = x.get_data_num(off)?;
+        let line_height = height.get_data_range(off + 1..off + line_length as usize)?;
+        let line_x = x.get_data_range(off + 1..off + line_length as usize)?;
+
+        let scaled_line_height: Vec<f64> = line_height
+            .iter()
+            .map(|&x| x as f64 * height_scale)
+            .collect();
+        let scaled_line_x: Vec<f64> = line_x.iter().map(|&x| x as f64 * x_scale).collect();
+
+        lines.push((scaled_line_x, scaled_line_height));
+        off += line_length as usize + 1;
+    }
+    Ok(lines)
+}
+
+fn get_height_channel(channels: &Vec<Channel>) -> Result<&Channel, String> {
+    channels
+        .get(0)
+        .ok_or_else(|| format!("Rustyscope Error: couldn't get channel 0 (Z height)."))
+}
+
+fn get_x_channel(channels: &Vec<Channel>) -> Result<&Channel, String> {
+    channels
+        .get(1)
+        .ok_or_else(|| format!("Rustyscope Error: couldn't get channel 1 (Y scan)."))
+}
+fn get_v_per_lsb(metadata: &Metadata, key: &str) -> Result<f64, String> {
+    metadata.get_float(key, Some(regex!(r"\(([-+]?(?:\d*\.?\d+)) V\/LSB")))
+}
+fn get_lsb_scale(metadata: &Metadata) -> Result<f64, String> {
+    metadata.get_float("z lsb scale", None)
+}
+
+fn get_axis_nm_per_v(metadata: &Metadata, key: &str) -> Result<f64, String> {
+    metadata.get_float(key, Some(regex!(r"([-+]?(?:\d*\.?\d+)) nm\/V")))
 }

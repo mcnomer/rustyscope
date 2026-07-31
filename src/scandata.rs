@@ -41,10 +41,6 @@ impl Channel {
 }
 
 fn get_channel_data(metadata: &Metadata, buffer: &[u8]) -> Result<Vec<i16>, String> {
-    // let channel: &Channel = self.channels.get(channel_idx).ok_or(format!(
-    //     "Rustyscope Error: couldn't get channel {}.",
-    //     channel_idx
-    // ))?;
     let offset: usize = metadata.get_int("data offset", None)?;
     let length: usize = metadata.get_int("data length", None)?;
     if length % 2 != 0 {

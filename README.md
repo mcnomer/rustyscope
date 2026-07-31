@@ -5,6 +5,7 @@ A small library for parsing .001 files from 5th Generation Bruker AFPs. Written 
 ## Installation
 
 ```bash
+$ pip install maturin
 $ pip install --index-url https://test.pypi.org/simple/ rustyscope
 ```
 
@@ -13,21 +14,15 @@ $ pip install --index-url https://test.pypi.org/simple/ rustyscope
 ```python
 
 from matplotlib import pyplot as plt
+from rustyscope import AFPFile
 
-import rustyscope
+file_path = r"good_test_file.001"
+afp_file = AFPFile(file_path)
 
+print(f"AFP image was scanned: {afp_file.file_metadata["date"]}")
 
-
-file_path = "example.001"
-
-
-
-data = rustyscope.load(file_path)
-
-for x, height in data:
-
-plt.scatter(x, height)
-
+for x, height in afp_file.data:
+    plt.scatter(x, height)
 plt.show()
 
 ```
