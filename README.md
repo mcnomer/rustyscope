@@ -38,4 +38,4 @@ This project was made into a python package using [maturin](https://github.com/P
 
 Thank you to Shea McLaughlin for help with file parsing.
 
-[![Made by Human](https://madebyhuman.iamjarl.com/badges/made-black.svg)](https://madebyhuman.iamjarl.com)
+[![Developed by a Human, Not by AI](https://notbyai.fyi/img/developed-by-human-not-by-ai-white.svg)](https://notbyai.fyi/)
