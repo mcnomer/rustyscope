@@ -12,7 +12,6 @@ $ pip install --index-url https://test.pypi.org/simple/ rustyscope
 ## Example Code
 
 ```python
-
 from matplotlib import pyplot as plt
 from rustyscope import AFPFile
 
@@ -21,10 +20,12 @@ afp_file = AFPFile(file_path)
 
 print(f"AFP image was scanned: {afp_file.file_metadata["date"]}")
 
+for channel in afp_file.channels:
+    print(f"Found channel: {channel.name}")
+
 for x, height in afp_file.data:
     plt.scatter(x, height)
 plt.show()
-
 ```
 
 ## Credits

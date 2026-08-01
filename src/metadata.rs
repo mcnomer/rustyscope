@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 use std::io::{Error, ErrorKind};
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MetadataValue {
     Integer(i64),
     Float(f64),
@@ -23,7 +23,7 @@ impl Display for MetadataValue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Metadata {
     pub data: HashMap<String, MetadataValue>,
 }

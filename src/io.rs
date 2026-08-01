@@ -1,5 +1,5 @@
+use crate::channel::Channel;
 use crate::metadata::Metadata;
-use crate::scandata::Channel;
 use ordered_hash_map::OrderedHashMap;
 use regex::regex;
 use std::cmp::min;

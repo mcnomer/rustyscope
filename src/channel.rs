@@ -3,7 +3,7 @@ use regex::regex;
 use crate::metadata::Metadata;
 use std::ops::Range;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Channel {
     pub name: String,
     pub metadata: Metadata,
